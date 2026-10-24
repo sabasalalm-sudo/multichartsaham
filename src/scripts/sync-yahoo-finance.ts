@@ -1,10 +1,11 @@
+// File: src/scripts/sync-yahoo-finance.ts
+
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import yahooFinance from 'yahoo-finance2';
 import { calculateBowScore } from '../lib/indicators/scoring';
 import { Candle } from '../types/trading';
 
-// Menggunakan Service Role Key untuk bypass RLS (karena ini worker internal)
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -14,9 +15,21 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Fungsi pembantu jeda waktu (mencegah blokir rate limit dari Yahoo)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Daftar Saham Default (Auto-Seed jika DB kosong)
+const DEFAULT_INITIAL_STOCKS = [
+  { symbol: 'BBCA.JK', ticker: 'BBCA', name: 'Bank Central Asia Tbk', sector: 'Financials', is_syariah: false, index_tags: ['LQ45', 'IDX30'] },
+  { symbol: 'BBRI.JK', ticker: 'BBRI', name: 'Bank Rakyat Indonesia Tbk', sector: 'Financials', is_syariah: false, index_tags: ['LQ45', 'IDX30'] },
+  { symbol: 'BMRI.JK', ticker: 'BMRI', name: 'Bank Mandiri (Persero) Tbk', sector: 'Financials', is_syariah: false, index_tags: ['LQ45', 'IDX30'] },
+  { symbol: 'BBNI.JK', ticker: 'BBNI', name: 'Bank Negara Indonesia Tbk', sector: 'Financials', is_syariah: false, index_tags: ['LQ45', 'IDX30'] },
+  { symbol: 'TLKM.JK', ticker: 'TLKM', name: 'Telkom Indonesia Tbk', sector: 'Infrastructure', is_syariah: true, index_tags: ['LQ45', 'IDX30'] },
+  { symbol: 'ASII.JK', ticker: 'ASII', name: 'Astra International Tbk', sector: 'Industrials', is_syariah: true, index_tags: ['LQ45', 'IDX30'] },
+  { symbol: 'UNTR.JK', ticker: 'UNTR', name: 'United Tractors Tbk', sector: 'Industrials', is_syariah: true, index_tags: ['LQ45', 'IDX30'] },
+  { symbol: 'ICBP.JK', ticker: 'ICBP', name: 'Indofood CBP Sukses Makmur Tbk', sector: 'Consumer Goods', is_syariah: true, index_tags: ['LQ45', 'IDX30'] },
+  { symbol: 'INDF.JK', ticker: 'INDF', name: 'Indofood Sukses Makmur Tbk', sector: 'Consumer Goods', is_syariah: true, index_tags: ['LQ45', 'IDX30'] },
+  { symbol: 'BRIS.JK', ticker: 'BRIS', name: 'Bank Syariah Indonesia Tbk', sector: 'Financials', is_syariah: true, index_tags: ['LQ45'] },
+];
 
 async function runDailySync() {
   console.log('🚀 [START] Memulai Sinkronisasi EOD & Keep-Alive Supabase...');
@@ -26,10 +39,10 @@ async function runDailySync() {
     // 1. SUPABASE KEEP-ALIVE PING
     const { error: pingError } = await supabase.from('stocks').select('id').limit(1);
     if (pingError) throw pingError;
-    console.log('🟢 Supabase Keep-Alive: Database aktif.');
+    console.log('🟢 Supabase Keep-Alive: Database terhubung aktif.');
 
-    // 2. AMBIL DAFTAR SAHAM AKTIF
-    const { data: activeStocks, error: stockError } = await supabase
+    // 2. CEK APAKAH TABEL STOCKS KOSONG? JIKA KOSONG, LAKUKAN AUTO-SEED
+    let { data: activeStocks, error: stockError } = await supabase
       .from('stocks')
       .select('*')
       .eq('is_active', true);
@@ -37,49 +50,62 @@ async function runDailySync() {
     if (stockError) throw stockError;
 
     if (!activeStocks || activeStocks.length === 0) {
-      console.log('ℹ️ Tidak ada saham yang aktif dipantau. Selesai.');
-      return;
+      console.log('🌱 Database stocks masih kosong. Memulai Auto-Seed 10 saham utama BEI...');
+      
+      const seedData = DEFAULT_INITIAL_STOCKS.map(s => ({
+        ...s,
+        is_liquid: true,
+        is_active: true,
+        last_bow_score: 0
+      }));
+
+      const { data: seeded, error: seedError } = await supabase
+        .from('stocks')
+        .upsert(seedData, { onConflict: 'symbol' })
+        .select();
+
+      if (seedError) throw seedError;
+      activeStocks = seeded;
+      console.log(`✅ Berhasil melakukan Auto-Seed ${activeStocks.length} saham ke Supabase!`);
     }
 
-    console.log(`📋 Ditemukan ${activeStocks.length} saham aktif untuk diproses.`);
+    console.log(`📋 Memproses penarikan data untuk ${activeStocks.length} saham aktif...`);
 
-    // 3. PROSES SETIAP SAHAM SATU PER SATU
+    // 3. TARIK DATA 1 TAHUN DARI YAHOO FINANCE UNTUK SETIAP SAHAM
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
     for (const stock of activeStocks) {
-      console.log(`\n⏳ Memproses ${stock.symbol} (${stock.name})...`);
+      console.log(`\n⏳ Mengambil candle 1 tahun ${stock.symbol} (${stock.name})...`);
 
       try {
-        // Ambil data dari Yahoo Finance (contoh symbol: BBCA.JK)
         const result: any[] = await yahooFinance.historical(stock.symbol, {
           period1: oneYearAgo,
           interval: '1d'
         });
 
         if (!result || result.length === 0) {
-          console.warn(`⚠️ Data tidak ditemukan untuk ${stock.symbol}`);
+          console.warn(`⚠️ Tidak ada candle untuk ${stock.symbol}`);
           continue;
         }
 
-        // Format data menjadi struktur Candle kita
         const candles: Candle[] = result
           .filter(c => c.close !== null && c.close !== undefined)
           .map(c => ({
             time: new Date(c.date).toISOString().split('T')[0],
-            open: c.open ?? c.close,
-            high: c.high ?? c.close,
-            low: c.low ?? c.close,
-            close: c.close,
+            open: Math.round(c.open ?? c.close),
+            high: Math.round(c.high ?? c.close),
+            low: Math.round(c.low ?? c.close),
+            close: Math.round(c.close),
             volume: c.volume ?? 0
           }));
 
-        // Hitung Skor BoW menggunakan modul logika Sesi 2
+        // Hitung Skor BoW & Support/Resisten
         const bowAnalysis = calculateBowScore(candles);
         const lastCandle = candles[candles.length - 1];
 
-        // 4. SIMPAN HISTORI CANDLE TERBARU (Hanya 30 hari terakhir agar cepat)
-        const recentCandles = candles.slice(-30).map(c => ({
+        // 4. SIMPAN 60 CANDLE TERAKHIR KE TABEL stock_candles
+        const recentCandles = candles.slice(-60).map(c => ({
           stock_id: stock.id,
           time: c.time,
           open: c.open,
@@ -91,7 +117,7 @@ async function runDailySync() {
 
         await supabase.from('stock_candles').upsert(recentCandles, { onConflict: 'stock_id, time' });
 
-        // 5. UPDATE SKOR & SARAN ENTRY DI TABEL STOCKS
+        // 5. UPDATE SKOR BoW & REKOMENDASI DI TABEL stocks
         await supabase
           .from('stocks')
           .update({
@@ -104,17 +130,16 @@ async function runDailySync() {
           })
           .eq('id', stock.id);
 
-        console.log(`✅ ${stock.symbol} Sukses! Skor BoW: ${bowAnalysis.totalScore} | Close: ${lastCandle.close}`);
+        console.log(`✅ ${stock.symbol} Selesai! Skor BoW: ${bowAnalysis.totalScore} | Close: ${lastCandle.close} | SL: ${bowAnalysis.suggestedSL} | TP: ${bowAnalysis.suggestedTP}`);
 
-        // Beri jeda 800ms antar saham agar ramah API
         await delay(800);
       } catch (err: any) {
-        console.error(`❌ Gagal memproses ${stock.symbol}:`, err.message);
+        console.error(`❌ Gagal pada ${stock.symbol}:`, err.message);
       }
     }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`\n🎉 [COMPLETE] Seluruh sinkronisasi selesai dalam ${duration} detik.`);
+    console.log(`\n🎉 [COMPLETE] Sinkronisasi seluruh candle bursa selesai dalam ${duration} detik.`);
   } catch (err: any) {
     console.error('🔥 Fatal Error pada worker:', err.message);
     process.exit(1);
