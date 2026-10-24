@@ -3,14 +3,14 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LineChart, WalletCards, ShieldCheck } from 'lucide-react';
+import { LineChart, WalletCards, Layers } from 'lucide-react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* 1. Header Navbar Utama */}
+      {/* Header Navbar Utama */}
       <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           
@@ -27,7 +27,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
 
-          {/* Menu Tab Navigasi */}
+          {/* Menu Tab Navigasi (Scanner, Simulasi, Semesta) */}
           <nav className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
             <Link
               href="/"
@@ -52,12 +52,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <WalletCards className="w-3.5 h-3.5" />
               <span>Simulasi</span>
             </Link>
+
+            <Link
+              href="/universe"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+                pathname === '/universe'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Semesta</span>
+            </Link>
           </nav>
 
         </div>
       </header>
 
-      {/* 2. Konten Halaman Aktif */}
+      {/* Konten Halaman Aktif */}
       <main className="flex-1">
         {children}
       </main>
