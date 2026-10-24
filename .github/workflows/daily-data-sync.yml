@@ -1,0 +1,31 @@
+name: Daily Stock EOD Sync & Keep-Alive
+
+on:
+  schedule:
+    # Berjalan Senin - Jumat pukul 10:30 UTC (17:30 WIB)
+    - cron: '30 10 * * 1-5'
+  # Memungkinkan kita menjalankan manual lewat tombol di GitHub Actions
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run EOD Sync Worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx src/scripts/sync-yahoo-finance.ts
