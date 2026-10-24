@@ -1,20 +1,21 @@
+// File: src/app/(dashboard)/simulation/page.tsx
+
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { executeSimSell } from '@/lib/trading/simulationEngine';
 import { 
+  ArrowLeft, 
   Wallet, 
   TrendingUp, 
   TrendingDown, 
-  Percent, 
+  PieChart, 
   History, 
-  ArrowUpRight, 
-  ArrowDownRight,
-  CheckCircle2,
-  AlertCircle
+  CheckCircle2, 
+  Plus 
 } from 'lucide-react';
 
-// Data simulasi awal
 interface Position {
   id: string;
   ticker: string;
@@ -22,8 +23,7 @@ interface Position {
   lots: number;
   avgBuyPrice: number;
   currentPrice: number;
-  suggestedSL: number;
-  suggestedTP: number;
+  allocationPercent: number;
 }
 
 interface TransactionLog {
@@ -33,69 +33,60 @@ interface TransactionLog {
   price: number;
   lots: number;
   pnl?: number;
-  pnlPercent?: number;
+  time: string;
   date: string;
 }
 
 export default function SimulationPage() {
-  const [cashBalance, setCashBalance] = useState<number>(45000000); // Sisa Kas Rp 45 Juta
+  const [activeTab, setActiveTab] = useState<'portofolio' | 'posisi' | 'jurnal'>('portofolio');
+  const [cashBalance, setCashBalance] = useState<number>(50000000); // Rp 50.000.000
   const [positions, setPositions] = useState<Position[]>([
     {
       id: '1',
       ticker: 'BBCA',
       name: 'Bank Central Asia Tbk',
-      lots: 33,
-      avgBuyPrice: 9600,
-      currentPrice: 9800,
-      suggestedSL: 9550,
-      suggestedTP: 10400
+      lots: 20,
+      avgBuyPrice: 8950,
+      currentPrice: 9200,
+      allocationPercent: 35,
     },
     {
       id: '2',
-      ticker: 'ASII',
-      name: 'Astra International Tbk',
-      lots: 50,
-      avgBuyPrice: 5150,
-      currentPrice: 5100,
-      suggestedSL: 4950,
-      suggestedTP: 5500
+      ticker: 'TLKM',
+      name: 'Telkom Indonesia Tbk',
+      lots: 32,
+      avgBuyPrice: 3800,
+      currentPrice: 3890,
+      allocationPercent: 25,
+    },
+    {
+      id: '3',
+      ticker: 'BMRI',
+      name: 'Bank Mandiri Tbk',
+      lots: 16,
+      avgBuyPrice: 6300,
+      currentPrice: 6450,
+      allocationPercent: 20,
     }
   ]);
 
   const [history, setHistory] = useState<TransactionLog[]>([
-    {
-      id: 'h1',
-      ticker: 'TLKM',
-      type: 'SELL',
-      price: 3200,
-      lots: 50,
-      pnl: 1500000,
-      pnlPercent: 10.3,
-      date: '2025-02-12'
-    },
-    {
-      id: 'h2',
-      ticker: 'BBNI',
-      type: 'SELL',
-      price: 5400,
-      lots: 40,
-      pnl: -600000,
-      pnlPercent: -2.7,
-      date: '2025-02-10'
-    }
+    { id: '1', ticker: 'BBCA', type: 'BUY', lots: 100, price: 8950, pnl: 420000, time: '09:45', date: '15 Apr 2025' },
+    { id: '2', ticker: 'TLKM', type: 'SELL', lots: 50, price: 6200, pnl: -75000, time: '14:16', date: '14 Apr 2025' },
+    { id: '3', ticker: 'BMRI', type: 'BUY', lots: 80, price: 6200, pnl: 240000, time: '11:33', date: '12 Apr 2025' },
+    { id: '4', ticker: 'ASII', type: 'SELL', lots: 30, price: 5800, pnl: -124000, time: '09:45', date: '10 Apr 2025' },
   ]);
 
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Perhitungan Nilai Portofolio
+  // Total Nilai Portofolio & Keuntungan
   const totalStockValue = positions.reduce((acc, pos) => acc + (pos.lots * 100 * pos.currentPrice), 0);
   const totalPortfolioValue = cashBalance + totalStockValue;
-  
-  const totalCost = positions.reduce((acc, pos) => acc + (pos.lots * 100 * pos.avgBuyPrice), 0);
-  const totalFloatingPnl = totalStockValue - totalCost;
-  const floatingPnlPercent = totalCost > 0 ? (totalFloatingPnl / totalCost) * 100 : 0;
+  const initialCapital = 50000000;
+  const totalGain = totalPortfolioValue - initialCapital;
+  const totalGainPercent = ((totalGain / initialCapital) * 100).toFixed(2);
 
-  // Eksekusi Jual Saham Simulasi
+  // Eksekusi Jual Posisi Simulasi
   const handleSellPosition = (pos: Position) => {
     const result = executeSimSell({
       currentBalance: cashBalance,
@@ -116,192 +107,244 @@ export default function SimulationPage() {
         price: pos.currentPrice,
         lots: pos.lots,
         pnl: result.realizedPnl,
-        pnlPercent: result.realizedPnlPercent,
-        date: new Date().toISOString().split('T')[0]
+        time: '15:15',
+        date: 'Hari Ini'
       };
       setHistory([newLog, ...history]);
-
-      setNotification(`Sukses menjual ${pos.lots} Lot ${pos.ticker}. Realized PnL: Rp ${result.realizedPnl.toLocaleString('id-ID')} (${result.realizedPnlPercent}%)`);
-      setTimeout(() => setNotification(null), 4000);
+      setNotification(`Sukses menjual ${pos.lots} Lot ${pos.ticker}. Realized: Rp ${result.realizedPnl.toLocaleString('id-ID')}`);
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-3 md:p-6 space-y-6 pb-20">
+    <div className="max-w-2xl mx-auto space-y-4 pb-12">
       
-      {/* 1. Header Judul */}
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">Portofolio Simulasi</h1>
-        <p className="text-xs md:text-sm text-slate-400">
-          Uji coba hasil sinyal BoW tanpa resiko uang sungguhan.
-        </p>
+      {/* Header Bar Sesuai Referensi ("← Simulasi Trading") */}
+      <div className="flex items-center justify-between pb-2 border-b border-brand-border">
+        <div className="flex items-center gap-2">
+          <Link href="/" className="p-1 text-slate-400 hover:text-white transition">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <h1 className="text-base font-extrabold text-white">Simulasi Trading</h1>
+        </div>
+      </div>
+
+      {/* Tabs Segmented: Portofolio | Posisi Terbuka | Jurnal */}
+      <div className="grid grid-cols-3 p-1 bg-brand-bg rounded-xl border border-brand-border text-xs font-bold text-center">
+        {(['portofolio', 'posisi', 'jurnal'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`py-1.5 rounded-lg capitalize transition ${
+              activeTab === tab
+                ? 'bg-brand-subtle text-white border border-brand-border shadow'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            {tab === 'portofolio' ? 'Portofolio' : tab === 'posisi' ? 'Posisi Terbuka' : 'Jurnal'}
+          </button>
+        ))}
       </div>
 
       {/* Banner Notifikasi */}
       {notification && (
-        <div className="p-3 bg-emerald-950/80 border border-emerald-800 rounded-xl flex items-center gap-2 text-emerald-300 text-xs font-semibold animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+        <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl flex items-center gap-2 text-emerald-400 text-xs font-semibold animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span>{notification}</span>
         </div>
       )}
 
-      {/* 2. Grid Statistik Kartu Ringkasan Akun */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Total Nilai Aset */}
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Total Nilai Aset</span>
-            <Wallet className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-lg md:text-xl font-bold text-white">
-            Rp {totalPortfolioValue.toLocaleString('id-ID')}
-          </div>
-          <div className="text-[10px] text-slate-400 mt-1">Modal Awal: Rp 100.000.000</div>
-        </div>
+      {/* ============================================================== */}
+      {/* TAB 1: PORTOFOLIO & ALOKASI ASET (Sesuai Layar Mobile ke-3)     */}
+      {/* ============================================================== */}
+      {activeTab === 'portofolio' && (
+        <div className="space-y-4">
+          {/* Card Saldo & Keuntungan */}
+          <div className="p-4 bg-brand-card rounded-2xl border border-brand-border shadow-glow-panel">
+            <div className="flex items-center justify-between pb-3 border-b border-brand-border/60">
+              <div>
+                <span className="text-[11px] text-slate-400 block font-medium">Saldo Virtual</span>
+                <span className="text-xl font-black text-white">
+                  Rp {cashBalance.toLocaleString('id-ID')}
+                </span>
+              </div>
+              <span className="text-xs font-bold px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                +{totalGainPercent}%
+              </span>
+            </div>
 
-        {/* Saldo Kas Virtual */}
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Kas Tersedia (Cash)</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Siap Beli</span>
+            <div className="flex items-center justify-between pt-3 text-xs">
+              <div>
+                <span className="text-[10px] text-slate-400 block">Total Nilai Portofolio</span>
+                <span className="font-bold text-white">Rp {totalPortfolioValue.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-slate-400 block">Keuntungan</span>
+                <span className="font-bold text-emerald-400">
+                  {totalGain >= 0 ? '+' : ''}Rp {totalGain.toLocaleString('id-ID')}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="text-lg md:text-xl font-bold text-slate-200">
-            Rp {cashBalance.toLocaleString('id-ID')}
-          </div>
-          <div className="text-[10px] text-slate-400 mt-1">Sisa dana untuk entry baru</div>
-        </div>
 
-        {/* Floating PnL */}
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Floating Profit/Loss</span>
-            {totalFloatingPnl >= 0 ? (
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-            ) : (
-              <TrendingDown className="w-4 h-4 text-rose-400" />
-            )}
-          </div>
-          <div className={`text-lg md:text-xl font-bold ${totalFloatingPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {totalFloatingPnl >= 0 ? '+' : ''}Rp {totalFloatingPnl.toLocaleString('id-ID')}
-          </div>
-          <div className="text-[10px] font-semibold mt-1 text-slate-400">
-            {floatingPnlPercent >= 0 ? '+' : ''}{floatingPnlPercent.toFixed(2)}% dari modal saham
-          </div>
-        </div>
+          {/* Card Donut Chart & Alokasi Aset */}
+          <div className="p-4 bg-brand-card rounded-2xl border border-brand-border shadow-glow-panel">
+            <h3 className="text-xs font-bold text-slate-300 mb-4">Alokasi Aset</h3>
 
-        {/* Win Rate */}
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Win Rate Jurnal</span>
-            <Percent className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-lg md:text-xl font-bold text-amber-400">
-            66.7%
-          </div>
-          <div className="text-[10px] text-slate-400 mt-1">2 Menang / 1 Kalah</div>
-        </div>
-      </div>
-
-      {/* 3. Daftar Posisi Saham yang Sedang Dipegang */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-sm md:text-base font-bold text-white">Posisi Saham Terbuka ({positions.length})</h2>
-          <span className="text-xs text-slate-400">Terupdate harga harian terakhir</span>
-        </div>
-
-        {positions.length === 0 ? (
-          <div className="p-8 text-center text-slate-500 text-xs md:text-sm">
-            Tidak ada saham yang sedang dipegang. Buka menu Scanner untuk mencari peluang BoW!
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-800">
-            {positions.map(pos => {
-              const posCost = pos.lots * 100 * pos.avgBuyPrice;
-              const posValue = pos.lots * 100 * pos.currentPrice;
-              const pnl = posValue - posCost;
-              const pnlPercent = (pnl / posCost) * 100;
-
-              return (
-                <div key={pos.id} className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-slate-800/40 transition">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base font-bold text-white">{pos.ticker}</span>
-                      <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
-                        {pos.lots} Lot ({pos.lots * 100} Lembar)
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400">{pos.name}</p>
-                    <div className="flex items-center gap-3 text-xs text-slate-400">
-                      <span>Modal: <strong className="text-slate-300">Rp {pos.avgBuyPrice.toLocaleString('id-ID')}</strong></span>
-                      <span>Harga Sekarang: <strong className="text-slate-300">Rp {pos.currentPrice.toLocaleString('id-ID')}</strong></span>
-                    </div>
-                  </div>
-
-                  {/* PnL & Tombol Jual */}
-                  <div className="w-full md:w-auto flex items-center justify-between md:justify-end gap-6">
-                    <div className="text-right">
-                      <div className={`text-sm md:text-base font-bold ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {pnl >= 0 ? '+' : ''}Rp {pnl.toLocaleString('id-ID')}
-                      </div>
-                      <div className={`text-xs font-semibold ${pnl >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                        {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => handleSellPosition(pos)}
-                      className="py-2 px-4 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md transition"
-                    >
-                      Jual / TP
-                    </button>
-                  </div>
+            <div className="flex items-center justify-around gap-4">
+              {/* Donut Visual Indicator (83% Terinvestasi) */}
+              <div className="relative flex items-center justify-center w-24 h-24">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                  <path
+                    className="text-brand-subtle stroke-current"
+                    strokeWidth="3.8"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                  <path
+                    className="text-emerald-500 stroke-current"
+                    strokeDasharray="83, 100"
+                    strokeWidth="3.8"
+                    strokeLinecap="round"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                </svg>
+                <div className="absolute flex flex-col items-center">
+                  <span className="text-sm font-black text-white">83%</span>
                 </div>
-              );
-            })}
+              </div>
+
+              {/* Legend Alokasi */}
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                  <span className="text-slate-300 font-medium">BBCA</span>
+                  <span className="text-slate-400 ml-auto font-bold">35%</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+                  <span className="text-slate-300 font-medium">TLKM</span>
+                  <span className="text-slate-400 ml-auto font-bold">25%</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                  <span className="text-slate-300 font-medium">BMRI</span>
+                  <span className="text-slate-400 ml-auto font-bold">20%</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+                  <span className="text-slate-300 font-medium">Lainnya</span>
+                  <span className="text-slate-400 ml-auto font-bold">20%</span>
+                </div>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* 4. Riwayat Jurnal Transaksi */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-        <div className="p-4 border-b border-slate-800 flex items-center gap-2">
-          <History className="w-4 h-4 text-slate-400" />
-          <h2 className="text-sm md:text-base font-bold text-white">Riwayat Jurnal Transaksi</h2>
+          {/* CTA: Trading Baru */}
+          <Link
+            href="/"
+            className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-glow-buy transition flex items-center justify-center gap-1.5"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>Trading Baru</span>
+          </Link>
         </div>
+      )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
-              <tr>
-                <th className="p-3">Tanggal</th>
-                <th className="p-3">Emiten</th>
-                <th className="p-3">Aksi</th>
-                <th className="p-3">Harga</th>
-                <th className="p-3">Jumlah Lot</th>
-                <th className="p-3 text-right">Realized PnL</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800 text-slate-300">
-              {history.map(item => (
-                <tr key={item.id} className="hover:bg-slate-800/30 transition">
-                  <td className="p-3 text-slate-400">{item.date}</td>
-                  <td className="p-3 font-bold text-white">{item.ticker}</td>
-                  <td className="p-3">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-400 border border-rose-800">
-                      SELL
+      {/* ============================================================== */}
+      {/* TAB 2: POSISI TERBUKA                                          */}
+      {/* ============================================================== */}
+      {activeTab === 'posisi' && (
+        <div className="space-y-2.5">
+          {positions.map(pos => {
+            const cost = pos.lots * 100 * pos.avgBuyPrice;
+            const currentVal = pos.lots * 100 * pos.currentPrice;
+            const pnl = currentVal - cost;
+            const pnlPercent = (pnl / cost) * 100;
+
+            return (
+              <div
+                key={pos.id}
+                className="p-3.5 bg-brand-card rounded-2xl border border-brand-border flex items-center justify-between"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-extrabold text-white">{pos.ticker}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-subtle text-slate-400">
+                      {pos.lots} lot
                     </span>
-                  </td>
-                  <td className="p-3">Rp {item.price.toLocaleString('id-ID')}</td>
-                  <td className="p-3">{item.lots} Lot</td>
-                  <td className={`p-3 text-right font-bold ${item.pnl && item.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {item.pnl && item.pnl >= 0 ? '+' : ''}Rp {item.pnl?.toLocaleString('id-ID')} ({item.pnlPercent}%)
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Avg: Rp {pos.avgBuyPrice.toLocaleString('id-ID')}</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <span className={`text-xs font-black block ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {pnl >= 0 ? '+' : ''}Rp {pnl.toLocaleString('id-ID')}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => handleSellPosition(pos)}
+                    className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs transition"
+                  >
+                    Jual
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 3: JURNAL TRANSAKSI (Sesuai Layar Mobile ke-5)              */}
+      {/* ============================================================== */}
+      {activeTab === 'jurnal' && (
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {history.map(item => (
+              <div
+                key={item.id}
+                className="p-3 bg-brand-card rounded-2xl border border-brand-border flex items-center justify-between"
+              >
+                <div>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">{item.date} • {item.time}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-extrabold text-white">{item.ticker}</span>
+                    <span
+                      className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
+                        item.type === 'BUY'
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : 'bg-rose-500/20 text-rose-400'
+                      }`}
+                    >
+                      {item.type}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    {item.lots} lot @ {item.price.toLocaleString('id-ID')}
+                  </span>
+                </div>
+
+                <div className="text-right">
+                  <span
+                    className={`text-xs font-black ${
+                      (item.pnl || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                    }`}
+                  >
+                    {(item.pnl || 0) >= 0 ? '+' : ''}Rp {item.pnl?.toLocaleString('id-ID')}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
     </div>
   );
