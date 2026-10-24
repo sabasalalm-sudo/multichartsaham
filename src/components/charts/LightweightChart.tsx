@@ -3,34 +3,31 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, LineStyle } from 'lightweight-charts';
 import { Candle } from '@/types/trading';
-import { calculateBollingerBands } from '@/lib/indicators/bollinger';
 
 interface LightweightChartProps {
   candles: Candle[];
   supportPrice?: number;
   resistancePrice?: number;
   height?: number;
-  showBollinger?: boolean;
 }
 
 export default function LightweightChart({
   candles,
   supportPrice,
   resistancePrice,
-  height = 240,
-  showBollinger = true
+  height = 220
 }: LightweightChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    if (!chartContainerRef.current || candles.length === 0) return;
+    if (!chartContainerRef.current || !candles || candles.length === 0) return;
 
-    // 1. Inisialisasi Canvas TradingView
+    // 1. Inisialisasi Canvas
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#0f172a' }, // Slate-900 (Dark theme elegan)
-        textColor: '#94a3b8' // Slate-400
+        background: { type: ColorType.Solid, color: '#0f172a' },
+        textColor: '#94a3b8'
       },
       grid: {
         vertLines: { color: '#1e293b' },
@@ -39,20 +36,10 @@ export default function LightweightChart({
       width: chartContainerRef.current.clientWidth,
       height: height,
       timeScale: {
-        borderColor: '#334155',
-        timeVisible: true,
-        secondsVisible: false
+        borderColor: '#334155'
       },
       rightPriceScale: {
-        borderColor: '#334155',
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.1
-        }
-      },
-      crosshair: {
-        vertLine: { color: '#64748b', width: 1, style: LineStyle.Dashed },
-        horzLine: { color: '#64748b', width: 1, style: LineStyle.Dashed }
+        borderColor: '#334155'
       }
     });
 
@@ -60,14 +47,13 @@ export default function LightweightChart({
 
     // 2. Tambahkan Candlestick Series
     const candleSeries = chart.addCandlestickSeries({
-      upColor: '#22c55e',        // Hijau (Bullish)
-      downColor: '#ef4444',      // Merah (Bearish)
+      upColor: '#22c55e',
+      downColor: '#ef4444',
       borderVisible: false,
       wickUpColor: '#22c55e',
       wickDownColor: '#ef4444'
     });
 
-    // Format data candlestick
     const formattedCandles = candles.map(c => ({
       time: c.time,
       open: c.open,
@@ -75,41 +61,14 @@ export default function LightweightChart({
       low: c.low,
       close: c.close
     }));
+
     candleSeries.setData(formattedCandles as any);
 
-    // 3. Tambahkan Bollinger Bands (Jika diaktifkan)
-    if (showBollinger) {
-      const bands = calculateBollingerBands(candles);
-
-      const upperSeries = chart.addLineSeries({
-        color: '#64748b',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dotted,
-        priceLineVisible: false
-      });
-      upperSeries.setData(bands.upper as any);
-
-      const middleSeries = chart.addLineSeries({
-        color: '#475569',
-        lineWidth: 1,
-        priceLineVisible: false
-      });
-      middleSeries.setData(bands.middle as any);
-
-      const lowerSeries = chart.addLineSeries({
-        color: '#64748b',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dotted,
-        priceLineVisible: false
-      });
-      lowerSeries.setData(bands.lower as any);
-    }
-
-    // 4. Garis Horisontal Support (Biru)
+    // 3. Garis Support (Biru)
     if (supportPrice && supportPrice > 0) {
       candleSeries.createPriceLine({
         price: supportPrice,
-        color: '#38bdf8', // Sky-400
+        color: '#38bdf8',
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
@@ -117,38 +76,35 @@ export default function LightweightChart({
       });
     }
 
-    // 5. Garis Horisontal Resisten / Target TP (Kuning Emas)
+    // 4. Garis Resisten (Kuning)
     if (resistancePrice && resistancePrice > 0) {
       candleSeries.createPriceLine({
         price: resistancePrice,
-        color: '#facc15', // Yellow-400
+        color: '#facc15',
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
-        title: 'Target/Res'
+        title: 'Target'
       });
     }
 
-    // Auto-fit rentang waktu agar candle proporsional
     chart.timeScale().fitContent();
 
-    // 6. Responsive Auto-Resize (Menyesuaikan lebar layar PC & HP secara mulus)
+    // 5. Responsive Resize
     const handleResize = () => {
       if (chartContainerRef.current && chart) {
         chart.applyOptions({ width: chartContainerRef.current.clientWidth });
       }
     };
 
-    const resizeObserver = new ResizeObserver(() => handleResize());
-    resizeObserver.observe(chartContainerRef.current);
+    window.addEventListener('resize', handleResize);
 
-    // 7. Bersihkan memori saat komponen dilepas (mencegah memory leak)
     return () => {
-      resizeObserver.disconnect();
+      window.removeEventListener('resize', handleResize);
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, supportPrice, resistancePrice, height, showBollinger]);
+  }, [candles, supportPrice, resistancePrice, height]);
 
   return (
     <div className="relative w-full overflow-hidden rounded-lg border border-slate-800 bg-slate-900 shadow-md">
