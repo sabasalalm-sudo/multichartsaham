@@ -6,7 +6,7 @@ export async function POST(request: Request) {
 
     const serverKey = process.env.MIDTRANS_SERVER_KEY;
     const isProduction = process.env.MIDTRANS_IS_PRODUCTION === 'true';
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://aplikasi-anda.vercel.app';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://multichartsaham.vercel.app';
 
     if (!serverKey) {
       return NextResponse.json({ error: 'Server Key Midtrans belum dikonfigurasi' }, { status: 500 });
