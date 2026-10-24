@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import StockCard, { StockCardData } from '@/components/charts/StockCard';
-import { Search, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
+import LotCalculatorModal from '@/components/calculator/LotCalculatorModal';
+import { Search } from 'lucide-react';
 
-// Data simulasi awal agar Anda bisa langsung melihat wujud aplikasinya
 const INITIAL_DEMO_DATA: StockCardData[] = [
   {
     id: '1',
@@ -53,9 +53,14 @@ const INITIAL_DEMO_DATA: StockCardData[] = [
 export default function DashboardPage() {
   const [stocks] = useState<StockCardData[]>(INITIAL_DEMO_DATA);
   const [search, setSearch] = useState('');
+  
+  // State untuk Bottom Sheet Calculator
+  const [selectedStock, setSelectedStock] = useState<StockCardData | null>(null);
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
 
   const handleOpenCalculator = (stock: StockCardData) => {
-    alert(`Membuka kalkulator lot untuk: ${stock.ticker} (Akan dihubungkan di Sesi 6)`);
+    setSelectedStock(stock);
+    setIsCalculatorOpen(true);
   };
 
   const filteredStocks = stocks.filter(
@@ -64,7 +69,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-3 md:p-6 pb-20">
-      {/* 1. Bar Header Kontrol & Pencarian */}
+      {/* Header Kontrol */}
       <div className="max-w-7xl mx-auto mb-6 flex flex-col md:flex-row items-center justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">Scanner Buy On Weakness</h1>
@@ -86,11 +91,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 2. Responsive Multi-Chart Layout: 
-             - Mobile: 1 kolom flex-col (Card Feed)
-             - Tablet: 2 kolom grid
-             - Desktop: 3 kolom grid
-      */}
+      {/* Grid Multi-Chart */}
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filteredStocks.map(stock => (
           <StockCard
@@ -100,6 +101,13 @@ export default function DashboardPage() {
           />
         ))}
       </div>
+
+      {/* Komponen Bottom-Sheet Modal */}
+      <LotCalculatorModal
+        isOpen={isCalculatorOpen}
+        onClose={() => setIsCalculatorOpen(false)}
+        stock={selectedStock}
+      />
     </div>
   );
 }
