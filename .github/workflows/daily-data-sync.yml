@@ -2,9 +2,9 @@ name: Daily Stock EOD Sync & Keep-Alive
 
 on:
   schedule:
-    # Berjalan Senin - Jumat pukul 10:30 UTC (17:30 WIB)
+    # Berjalan otomatis setiap Senin - Jumat pukul 10:30 UTC (17:30 WIB)
     - cron: '30 10 * * 1-5'
-  # Memungkinkan kita menjalankan manual lewat tombol di GitHub Actions
+  # Tombol trigger manual di tab Actions GitHub
   workflow_dispatch:
 
 jobs:
