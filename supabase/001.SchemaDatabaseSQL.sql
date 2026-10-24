@@ -1,6 +1,16 @@
 -- ============================================================================
--- SESI 1: DATABASE SCHEMA & SECURITY POLICIES (SUPABASE POSTGRESQL)
+-- SESI 1: DATABASE SCHEMA & SECURITY POLICIES (SUPABASE POSTGRESQL) - FIXED
 -- ============================================================================
+
+-- Bersihkan tabel jika sebelumnya sempat terbuat sebagian
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_new_user();
+DROP TABLE IF EXISTS public.sim_transactions CASCADE;
+DROP TABLE IF EXISTS public.sim_positions CASCADE;
+DROP TABLE IF EXISTS public.user_universe CASCADE;
+DROP TABLE IF EXISTS public.stock_candles CASCADE;
+DROP TABLE IF EXISTS public.stocks CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
 
 -- 1. TABEL: PROFILES (Profil Pengguna & Preferensi Trading)
 CREATE TABLE public.profiles (
@@ -74,7 +84,7 @@ CREATE TABLE public.sim_positions (
 -- 6. TABEL: SIM_TRANSACTIONS (Jurnal Riwayat Beli/Jual Simulasi)
 CREATE TABLE public.sim_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id REFERENCES public.profiles(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE, -- Sudah ditambahkan UUID
     stock_id UUID REFERENCES public.stocks(id) ON DELETE CASCADE,
     type TEXT NOT NULL CHECK (type IN ('BUY', 'SELL')),
     price NUMERIC NOT NULL,
@@ -89,7 +99,6 @@ CREATE TABLE public.sim_transactions (
 -- ROW LEVEL SECURITY (RLS) - KEAMANAN DATA
 -- ============================================================================
 
--- Aktifkan RLS pada seluruh tabel
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stocks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_candles ENABLE ROW LEVEL SECURITY;
@@ -97,27 +106,23 @@ ALTER TABLE public.user_universe ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sim_positions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sim_transactions ENABLE ROW LEVEL SECURITY;
 
--- Policy Profiles: User hanya bisa membaca & mengedit profil miliknya sendiri
 CREATE POLICY "Users can view own profile" 
 ON public.profiles FOR SELECT USING (auth.uid() = id);
 
 CREATE POLICY "Users can update own profile" 
 ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
--- Policy Stocks & Candles: Seluruh user terotentikasi bisa membaca (Data Bersama)
 CREATE POLICY "Authenticated users can read stocks" 
 ON public.stocks FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "Authenticated users can read candles" 
 ON public.stock_candles FOR SELECT TO authenticated USING (true);
 
--- Policy User Universe: User hanya bisa kelola watchlist miliknya
 CREATE POLICY "Users can manage own universe" 
 ON public.user_universe FOR ALL 
 USING (auth.uid() = user_id) 
 WITH CHECK (auth.uid() = user_id);
 
--- Policy Simulation: Isolasi penuh akun simulasi per user
 CREATE POLICY "Users can manage own sim positions" 
 ON public.sim_positions FOR ALL 
 USING (auth.uid() = user_id) 
