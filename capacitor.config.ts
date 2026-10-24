@@ -4,7 +4,7 @@ const config = {
   webDir: 'public',
   server: {
     // Ganti dengan URL Vercel Anda jika sudah aktif
-    url: 'https://multichartsaham.vercel.app',
+    url: 'https://multichartsaham.vercel.app/',
     cleartext: false
   },
   android: {
