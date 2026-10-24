@@ -1,34 +1,32 @@
+// File: tailwind.config.js
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: 'class',
   content: [
-    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {
       colors: {
-        // Palet gelap sesuai referensi UI
         brand: {
-          bg: '#080D1A',        // Background utama (paling gelap)
-          card: '#0D1527',      // Background kartu & panel 
-          cardHover: '#131F38', // State hover kartu
-          subtle: '#17233F',    // Background elemen minor / nested box
-          border: '#1E2D4A',    // Border halus antar panel
+          bg: '#080D1A',
+          card: '#0D1527',
+          cardHover: '#131F38',
+          subtle: '#17233F',
+          border: '#1E2D4A',
           borderLight: '#2A3C60',
         },
-        // Warna sinyal trading (Buy, Hold, Sell)
         trading: {
-          buy: '#00D084',       // Hijau cerah untuk BUY & Profit
+          buy: '#00D084',
           buyDark: '#059669',
-          hold: '#F59E0B',      // Kuning / Oranye untuk HOLD
-          sell: '#F43F5E',      // Merah untuk SELL & Loss
-          blue: '#3B82F6',      // Aksen informasi
+          hold: '#F59E0B',
+          sell: '#F43F5E',
+          blue: '#3B82F6',
         },
-      },
-      fontFamily: {
-        sans: ['Inter', 'sans-serif'],
       },
       boxShadow: {
         'glow-buy': '0 0 15px -3px rgba(0, 208, 132, 0.25)',
