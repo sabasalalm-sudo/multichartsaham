@@ -1,3 +1,5 @@
+// File: src/components/charts/LightweightChart.tsx
+
 'use client';
 
 import React, { useEffect, useRef } from 'react';
@@ -15,99 +17,108 @@ export default function LightweightChart({
   candles,
   supportPrice,
   resistancePrice,
-  height = 220
+  height = 200
 }: LightweightChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    if (!chartContainerRef.current || !candles || candles.length === 0) return;
+    if (!chartContainerRef.current) return;
 
-    // 1. Inisialisasi Canvas
+    // Inisialisasi Canvas Charting TradingView
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#0f172a' },
-        textColor: '#94a3b8'
+        background: { type: ColorType.Solid, color: '#080D1A' },
+        textColor: '#94A3B8',
+        fontSize: 10,
       },
       grid: {
-        vertLines: { color: '#1e293b' },
-        horzLines: { color: '#1e293b' }
+        vertLines: { color: 'rgba(30, 45, 74, 0.5)' },
+        horzLines: { color: 'rgba(30, 45, 74, 0.5)' },
       },
-      width: chartContainerRef.current.clientWidth,
+      crosshair: {
+        vertLine: { color: '#00D084', width: 1, style: LineStyle.Dashed },
+        horzLine: { color: '#00D084', width: 1, style: LineStyle.Dashed },
+      },
+      width: chartContainerRef.current.clientWidth || 300,
       height: height,
       timeScale: {
-        borderColor: '#334155'
+        borderColor: '#1E2D4A',
+        timeVisible: true,
       },
       rightPriceScale: {
-        borderColor: '#334155'
-      }
+        borderColor: '#1E2D4A',
+      },
     });
 
     chartRef.current = chart;
 
-    // 2. Tambahkan Candlestick Series
+    // Candlestick Series
     const candleSeries = chart.addCandlestickSeries({
-      upColor: '#22c55e',
-      downColor: '#ef4444',
+      upColor: '#00D084',
+      downColor: '#F43F5E',
       borderVisible: false,
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444'
+      wickUpColor: '#00D084',
+      wickDownColor: '#F43F5E',
     });
 
-    const formattedCandles = candles.map(c => ({
-      time: c.time,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close
-    }));
+    if (candles && candles.length > 0) {
+      const formattedCandles = candles.map(c => ({
+        time: c.time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close
+      }));
+      candleSeries.setData(formattedCandles as any);
+    }
 
-    candleSeries.setData(formattedCandles as any);
-
-    // 3. Garis Support (Biru)
+    // Garis Support (Stop Loss)
     if (supportPrice && supportPrice > 0) {
       candleSeries.createPriceLine({
         price: supportPrice,
-        color: '#38bdf8',
+        color: '#F43F5E',
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
-        title: 'Support'
+        title: 'SL'
       });
     }
 
-    // 4. Garis Resisten (Kuning)
+    // Garis Target Resisten (Take Profit)
     if (resistancePrice && resistancePrice > 0) {
       candleSeries.createPriceLine({
         price: resistancePrice,
-        color: '#facc15',
+        color: '#00D084',
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
-        title: 'Target'
+        title: 'TP'
       });
     }
 
     chart.timeScale().fitContent();
 
-    // 5. Responsive Resize
-    const handleResize = () => {
-      if (chartContainerRef.current && chart) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+    // Auto-Resize dengan ResizeObserver (Mencegah Crash Layar Responsif / Flexbox)
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (entries.length === 0 || !chartRef.current) return;
+      const { width } = entries[0].contentRect;
+      if (width > 0) {
+        chartRef.current.applyOptions({ width });
       }
-    };
+    });
 
-    window.addEventListener('resize', handleResize);
+    resizeObserver.observe(chartContainerRef.current);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
     };
   }, [candles, supportPrice, resistancePrice, height]);
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border border-slate-800 bg-slate-900 shadow-md">
+    <div className="relative w-full overflow-hidden rounded-xl bg-brand-bg">
       <div ref={chartContainerRef} className="w-full" style={{ height: `${height}px` }} />
     </div>
   );
