@@ -1,10 +1,11 @@
+// File: src/components/charts/StockCard.tsx
+
 'use client';
 
 import React from 'react';
 import LightweightChart from './LightweightChart';
-import Badge from '../common/Badge';
 import { Candle } from '@/types/trading';
-import { Calculator, TrendingUp } from 'lucide-react';
+import { TrendingUp, Calculator, ArrowUpRight } from 'lucide-react';
 
 export interface StockCardData {
   id: string;
@@ -25,76 +26,90 @@ export interface StockCardData {
 interface StockCardProps {
   stock: StockCardData;
   onOpenCalculator: (stock: StockCardData) => void;
+  onSelect?: (stock: StockCardData) => void;
+  isSelected?: boolean;
 }
 
-export default function StockCard({ stock, onOpenCalculator }: StockCardProps) {
+export default function StockCard({ stock, onOpenCalculator, onSelect, isSelected }: StockCardProps) {
   // Hitung perkiraan Risk Reward Ratio
   const risk = stock.suggestedEntry - stock.suggestedSL;
   const reward = stock.suggestedTP - stock.suggestedEntry;
   const rrr = risk > 0 ? (reward / risk).toFixed(1) : '0';
 
   return (
-    <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg hover:border-slate-700 transition duration-200">
-      {/* 1. Header Kartu: Ticker, Nama & Skor */}
-      <div className="p-3.5 border-b border-slate-800 flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-bold text-white tracking-wide">{stock.ticker}</h3>
-            {stock.isSyariah && <Badge label="Syariah" variant="green" />}
+    <div 
+      onClick={() => onSelect && onSelect(stock)}
+      className={`flex flex-col bg-brand-card border rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
+        isSelected 
+          ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-glow-buy' 
+          : 'border-brand-border hover:border-slate-700 hover:bg-brand-cardHover'
+      }`}
+    >
+      {/* 1. Header Kartu: Ticker, Badges, & Skor Lingkaran */}
+      <div className="p-3.5 border-b border-brand-border/60 flex items-start justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-base font-extrabold text-white tracking-wide">{stock.ticker}</h3>
+            {stock.isSyariah && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20">
+                Syariah
+              </span>
+            )}
             {stock.indexTags.map(tag => (
-              <Badge key={tag} label={tag} variant="blue" />
+              <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded bg-brand-subtle text-slate-300 font-semibold border border-brand-border">
+                {tag}
+              </span>
             ))}
           </div>
-          <p className="text-xs text-slate-400 truncate max-w-[200px]">{stock.name}</p>
+          <p className="text-[11px] text-slate-400 truncate max-w-[210px]">{stock.name}</p>
         </div>
 
-        {/* Skor BoW */}
-        <div className="flex flex-col items-end">
-          <div className="flex items-center gap-1 text-emerald-400 font-bold text-sm bg-emerald-950/40 border border-emerald-800/60 px-2 py-0.5 rounded-lg">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>{stock.bowScore} Pts</span>
-          </div>
-          <span className="text-[10px] text-slate-400 mt-0.5">Skor Reversal</span>
+        {/* Skor BoW Badge Lingkaran */}
+        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 font-black text-xs shrink-0 shadow-sm">
+          {stock.bowScore}
         </div>
       </div>
 
-      {/* 2. Area Grafik Canvas */}
-      <div className="p-2 bg-slate-950">
+      {/* 2. Area Grafik Canvas TradingView */}
+      <div className="p-2.5 bg-brand-bg">
         <LightweightChart
           candles={stock.candles}
           supportPrice={stock.suggestedSL}
           resistancePrice={stock.suggestedTP}
-          height={220}
+          height={180}
         />
       </div>
 
       {/* 3. Panel Ringkasan Metrik (Entry, SL, TP, RRR) */}
-      <div className="grid grid-cols-4 gap-1 p-2.5 bg-slate-900/60 border-t border-slate-800 text-center text-xs">
+      <div className="grid grid-cols-4 gap-1 p-2 bg-brand-subtle/50 border-t border-brand-border text-center">
         <div>
-          <div className="text-[10px] text-slate-400">Entry</div>
-          <div className="font-semibold text-slate-200">Rp {stock.suggestedEntry.toLocaleString('id-ID')}</div>
+          <span className="text-[10px] text-slate-400 block font-medium">Entry</span>
+          <span className="font-bold text-slate-200 text-xs">{stock.suggestedEntry.toLocaleString('id-ID')}</span>
         </div>
         <div>
-          <div className="text-[10px] text-rose-400">Stop Loss</div>
-          <div className="font-semibold text-rose-400">Rp {stock.suggestedSL.toLocaleString('id-ID')}</div>
+          <span className="text-[10px] text-rose-400 block font-medium">Stop Loss</span>
+          <span className="font-bold text-rose-400 text-xs">{stock.suggestedSL.toLocaleString('id-ID')}</span>
         </div>
         <div>
-          <div className="text-[10px] text-amber-400">Target TP</div>
-          <div className="font-semibold text-amber-400">Rp {stock.suggestedTP.toLocaleString('id-ID')}</div>
+          <span className="text-[10px] text-emerald-400 block font-medium">Target TP</span>
+          <span className="font-bold text-emerald-400 text-xs">{stock.suggestedTP.toLocaleString('id-ID')}</span>
         </div>
         <div>
-          <div className="text-[10px] text-emerald-400">Est. RRR</div>
-          <div className="font-semibold text-emerald-400">1 : {rrr}</div>
+          <span className="text-[10px] text-slate-400 block font-medium">Est. RRR</span>
+          <span className="font-bold text-white text-xs">1:{rrr}</span>
         </div>
       </div>
 
-      {/* 4. Tombol Aksi: Hitung Lot & Simulasi */}
-      <div className="p-2.5 border-t border-slate-800/80 bg-slate-900">
+      {/* 4. Tombol Aksi: Kalkulator Lot & Simulasi */}
+      <div className="p-2.5 border-t border-brand-border bg-brand-card">
         <button
-          onClick={() => onOpenCalculator(stock)}
-          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-md transition"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenCalculator(stock);
+          }}
+          className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-glow-buy transition"
         >
-          <Calculator className="w-4 h-4" />
+          <Calculator className="w-4 h-4 stroke-[2.5]" />
           <span>Kalkulator Lot & Simulasi</span>
         </button>
       </div>
