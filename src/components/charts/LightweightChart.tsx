@@ -10,7 +10,6 @@ import {
   ISeriesApi,
   LineStyle,
   CrosshairMode,
-  UTCTimestamp,
 } from 'lightweight-charts';
 import { Candle } from '@/types/trading';
 
@@ -127,7 +126,7 @@ export default function LightweightChart({
     );
   }, [candles]);
 
-  // Siapkan data MA (5, 50, 200) mirip Stockbit
+  // Siapkan data MA (5, 50, 200)
   const ma5Data = useMemo(() => {
     if (!showMA || sanitizedCandles.length < 5) return [];
     return calculateSMA(sanitizedCandles as any, 5);
@@ -143,7 +142,7 @@ export default function LightweightChart({
     return calculateSMA(sanitizedCandles as any, 200);
   }, [sanitizedCandles, showMA]);
 
-  // Setup default data header terakhir
+  // Setup default data bar terakhir
   const lastBarInfo = useMemo<BarHoverInfo | null>(() => {
     if (sanitizedCandles.length === 0) return null;
     const last = sanitizedCandles[sanitizedCandles.length - 1];
@@ -163,7 +162,6 @@ export default function LightweightChart({
   useEffect(() => {
     if (!chartContainerRef.current || sanitizedCandles.length === 0) return;
 
-    // Bersihkan canvas lama jika ada
     if (chartRef.current) {
       chartRef.current.remove();
       chartRef.current = null;
@@ -171,7 +169,7 @@ export default function LightweightChart({
 
     const container = chartContainerRef.current;
 
-    // 2. Inisialisasi Canvas Charting Pro ala Stockbit
+    // 2. Inisialisasi Canvas Charting TradingView
     const chart = createChart(container, {
       width: container.clientWidth || 600,
       height: height,
@@ -212,7 +210,7 @@ export default function LightweightChart({
         borderColor: '#1E2D4A',
         scaleMargins: {
           top: 0.1,
-          bottom: 0.25, // Memberi ruang bawah untuk indikator volume
+          bottom: 0.25,
         },
         autoScale: true,
       },
@@ -220,7 +218,7 @@ export default function LightweightChart({
 
     chartRef.current = chart;
 
-    // 3. Tambahkan Candlestick Series (Standar IDX: Hijau Naik, Merah Turun)
+    // 3. Tambahkan Candlestick Series (Standar BEI)
     const candleSeries = chart.addCandlestickSeries({
       upColor: '#00D084',
       downColor: '#F43F5E',
@@ -247,17 +245,17 @@ export default function LightweightChart({
       }))
     );
 
-    // 4. Tambahkan Volume Series di Lapisan Bawah (Overlay ala Stockbit)
+    // 4. Tambahkan Volume Series di Lapisan Bawah
     if (showVolume) {
       const volumeSeries = chart.addHistogramSeries({
         color: '#26a69a',
         priceFormat: { type: 'volume' },
-        priceScaleId: '', // Buat scale independen overlay
+        priceScaleId: '',
       });
 
       volumeSeries.priceScale().applyOptions({
         scaleMargins: {
-          top: 0.8, // 20% area bawah untuk volume
+          top: 0.8,
           bottom: 0,
         },
       });
@@ -271,11 +269,11 @@ export default function LightweightChart({
       volumeSeries.setData(volumeData);
     }
 
-    // 5. Tambahkan Indikator Moving Average (MA 5, MA 50, MA 200)
+    // 5. Tambahkan Indikator Moving Average (lineWidth menggunakan integer 1 dan 2)
     if (showMA) {
       if (ma5Data.length > 0) {
         const ma5Series = chart.addLineSeries({
-          color: '#38BDF8', // Cyan muda (MA 5)
+          color: '#38BDF8',
           lineWidth: 1,
           crosshairMarkerVisible: false,
           title: 'MA 5',
@@ -285,7 +283,7 @@ export default function LightweightChart({
 
       if (ma50Data.length > 0) {
         const ma50Series = chart.addLineSeries({
-          color: '#3B82F6', // Biru laut (MA 50)
+          color: '#3B82F6',
           lineWidth: 1,
           crosshairMarkerVisible: false,
           title: 'MA 50',
@@ -295,8 +293,8 @@ export default function LightweightChart({
 
       if (ma200Data.length > 0) {
         const ma200Series = chart.addLineSeries({
-          color: '#94A3B8', // Abu-abu gelap (MA 200)
-          lineWidth: 1.5,
+          color: '#94A3B8',
+          lineWidth: 2,
           crosshairMarkerVisible: false,
           title: 'MA 200',
         });
@@ -330,12 +328,12 @@ export default function LightweightChart({
       lowerSeries.setData(bollinger.lower);
     }
 
-    // 7. Garis SL & TP (Price Line)
+    // 7. Garis SL & TP (Price Line dengan lineWidth 1 atau 2)
     if (supportPrice && supportPrice > 0) {
       candleSeries.createPriceLine({
         price: supportPrice,
         color: '#F43F5E',
-        lineWidth: 1.5,
+        lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
         title: `SL ${supportPrice.toLocaleString('id-ID')}`,
@@ -346,14 +344,14 @@ export default function LightweightChart({
       candleSeries.createPriceLine({
         price: resistancePrice,
         color: '#00D084',
-        lineWidth: 1.5,
+        lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
         title: `TP ${resistancePrice.toLocaleString('id-ID')}`,
       });
     }
 
-    // 8. Tampilan Awal: Fokus pada 70 candle terakhir (TIDAK fitContent seluruh 3 tahun)
+    // 8. Tampilan Awal: Fokus pada 70 candle terakhir
     const totalBars = sanitizedCandles.length;
     if (totalBars > 0) {
       const defaultBarsVisible = Math.min(totalBars, 75);
@@ -400,12 +398,12 @@ export default function LightweightChart({
       }
     });
 
-    // 10. Auto-Fit Responsif Menggunakan ResizeObserver (Saat Sidebar Di-Hide / Ditempel)
+    // 10. Auto-Fit Responsif Menggunakan ResizeObserver
     let animationFrameId: number;
     const resizeObserver = new ResizeObserver((entries) => {
       if (!entries.length || !chartRef.current) return;
       const { width, height: observedHeight } = entries[0].contentRect;
-      
+
       cancelAnimationFrame(animationFrameId);
       animationFrameId = requestAnimationFrame(() => {
         if (chartRef.current && width > 0) {
@@ -440,13 +438,12 @@ export default function LightweightChart({
     ma200Data,
   ]);
 
-  // Data yang sedang aktif ditampilkan di header (Hover atau Last Bar)
   const display = hoverData || lastBarInfo;
   const isUp = (display?.changePercent || 0) >= 0;
 
   return (
     <div className="relative w-full overflow-hidden rounded-xl bg-brand-bg border border-brand-border flex flex-col group select-none">
-      {/* Legend & OHLCV Bar Overlay ala Stockbit / TradingView */}
+      {/* Legend & OHLCV Bar Overlay */}
       <div className="absolute top-2 left-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-mono pointer-events-none bg-brand-bg/80 backdrop-blur-sm px-2 py-1 rounded-md border border-brand-border/40">
         {ticker && (
           <span className="font-bold text-white tracking-wider text-xs">{ticker}</span>
