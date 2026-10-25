@@ -41,7 +41,7 @@ export async function GET() {
           .from('stock_candles')
           .select('time, open, high, low, close, volume')
           .eq('stock_id', stock.id)
-          .order('time', { ascending: true }); // Mengambil data berurutan A-Z
+          .order('time', { ascending: true }); // Mengambil data berurutan A-Z (Ascending)
 
         const candles = (candleData || []).map((c: any) => ({
           time: String(c.time),
@@ -71,26 +71,38 @@ export async function GET() {
           }
         }
 
-        // Kalkulasi Indikator Riil (Bollinger Bands & RSI 14)
-        let bollinger = { upper: [], middle: [], lower: [] };
+        // Kalkulasi Indikator Riil (Bollinger Bands & RSI 14) dengan Type Safety
+        let bollinger: {
+          upper: any[];
+          middle: any[];
+          lower: any[];
+        } = { upper: [], middle: [], lower: [] };
+        
         let rsiVal = 50;
 
         if (candles.length >= 20) {
           try {
-            bollinger = calculateBollingerBands(candles, 20, 2);
+            const bbResult = calculateBollingerBands(candles, 20, 2);
+            if (bbResult) {
+              bollinger = bbResult as any;
+            }
           } catch (e) {
-            // fallback
+            // fallback safe
           }
         }
 
         if (candles.length >= 15) {
           try {
-            const rsiArray = calculateRSI(candles, 14);
-            if (rsiArray && rsiArray.length > 0) {
-              rsiVal = Number(rsiArray[rsiArray.length - 1].value.toFixed(1));
+            const rsiResult: any = calculateRSI(candles, 14);
+            if (Array.isArray(rsiResult) && rsiResult.length > 0) {
+              const lastItem = rsiResult[rsiResult.length - 1];
+              const extracted = typeof lastItem === 'object' && lastItem !== null && 'value' in lastItem 
+                ? lastItem.value 
+                : lastItem;
+              rsiVal = Number(Number(extracted).toFixed(1)) || 50;
             }
           } catch (e) {
-            // fallback
+            // fallback safe
           }
         }
 
@@ -119,7 +131,7 @@ export async function GET() {
           rsi: rsiVal,
           macd: 'Reversal Uptrend',
           bollinger: bollinger,
-          candles: candles, // Seluruh histori riil yang tersimpan
+          candles: candles, // Seluruh histori 3 tahun yang tersimpan
         };
       })
     );
