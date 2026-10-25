@@ -11,91 +11,178 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 export async function POST(request: Request) {
   try {
-    const { ticker, userId } = await request.json();
+    const body = await request.json();
+    const { ticker, userId } = body;
     const cleanTicker = ticker?.trim().toUpperCase();
 
-    if (!cleanTicker || cleanTicker.length < 4) {
-      return NextResponse.json({ success: false, message: 'Kode ticker tidak valid' }, { status: 400 });
+    if (!cleanTicker || cleanTicker.length < 3) {
+      return NextResponse.json(
+        { success: false, message: 'Kode ticker saham tidak valid' },
+        { status: 400 }
+      );
     }
 
     const symbol = `${cleanTicker}.JK`;
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-    // 1. TARIK DATA 1 TAHUN SEKETIKA DARI YAHOO FINANCE
-    const result: any[] = await yahooFinance.historical(symbol, {
-      period1: oneYearAgo,
-      interval: '1d',
-    });
+    // 1. TENTUKAN RENTANG WAKTU 3 TAHUN KE BELAKANG HINGGA HARI INI
+    const threeYearsAgo = new Date();
+    threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
 
-    if (!result || result.length === 0) {
-      return NextResponse.json({ 
-        success: false, 
-        message: `Emiten ${cleanTicker} tidak ditemukan di bursa BEI / Yahoo Finance` 
-      }, { status: 404 });
+    // 2. AMBIL HISTORI CANDLE 3 TAHUN SECARA PARALEL DENGAN DETAIL PROFIL EMITEN
+    const [historicalData, quoteData] = await Promise.all([
+      yahooFinance.historical(symbol, {
+        period1: threeYearsAgo,
+        interval: '1d',
+      }).catch((err) => {
+        console.error(`Gagal mengambil data histori ${symbol}:`, err.message);
+        return null;
+      }),
+      yahooFinance.quote(symbol).catch(() => null),
+    ]);
+
+    if (!historicalData || historicalData.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Emiten ${cleanTicker} tidak ditemukan di Bursa Efek Indonesia (Yahoo Finance). Pastikan kode ticker benar.`,
+        },
+        { status: 404 }
+      );
     }
 
-    const candles: Candle[] = result
-      .filter(c => c.close !== null)
-      .map(c => ({
-        time: new Date(c.date).toISOString().split('T')[0],
-        open: Math.round(c.open ?? c.close),
-        high: Math.round(c.high ?? c.close),
-        low: Math.round(c.low ?? c.close),
-        close: Math.round(c.close),
-        volume: c.volume ?? 0,
-      }));
+    // 3. SANITASI DATA CANDLE 3 TAHUN (Standarisasi Tanggal YYYY-MM-DD & Rounding Rupiah)
+    const validMap = new Map<string, Candle>();
 
-    // 2. HITUNG SKOR BoW & REKOMENDASI SAAT ITU JUGA
+    for (const item of historicalData) {
+      if (item.close === null || item.open === null || item.high === null || item.low === null) {
+        continue;
+      }
+
+      const d = new Date(item.date);
+      if (isNaN(d.getTime())) continue;
+
+      const dateStr = d.toISOString().split('T')[0];
+      validMap.set(dateStr, {
+        time: dateStr,
+        open: Math.round(item.open),
+        high: Math.round(item.high),
+        low: Math.round(item.low),
+        close: Math.round(item.close),
+        volume: Number(item.volume || 0),
+      });
+    }
+
+    // Urutkan data secara kronologis (Ascending A-Z)
+    const candles: Candle[] = Array.from(validMap.values()).sort((a, b) =>
+      (a.time as string).localeCompare(b.time as string)
+    );
+
+    if (candles.length === 0) {
+      return NextResponse.json(
+        { success: false, message: `Data transaksi untuk ${cleanTicker} kosong.` },
+        { status: 400 }
+      );
+    }
+
+    // 4. HITUNG SKOR BUY ON WEAKNESS (BoW), SUPPORT, DAN TARGET RESISTEN
     const bowAnalysis = calculateBowScore(candles);
     const lastCandle = candles[candles.length - 1];
 
-    // 3. SIMPAN KE MASTER STOCKS & USER UNIVERSE SUPABASE (JIKA TERKONEKSI)
+    // Ambil nama resmi emiten dari quote Yahoo Finance jika tersedia
+    const companyName =
+      quoteData?.longName ||
+      quoteData?.shortName ||
+      `${cleanTicker} Tbk`;
+
+    // 5. SIMPAN KE DATABASE POSTGRESQL SUPABASE (SHARED POOL + CANDLES + USER WATCHLIST)
     if (supabaseUrl && supabaseKey) {
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      // Simpan/Update Master Saham
-      const { data: stockData } = await supabase
+      // A. Upsert ke Master Tabel 'stocks'
+      const { data: stockData, error: stockError } = await supabase
         .from('stocks')
-        .upsert({
-          symbol: symbol,
-          ticker: cleanTicker,
-          name: `${cleanTicker} Indonesia Tbk`,
-          is_active: true,
-          last_bow_score: bowAnalysis.totalScore,
-          last_close: lastCandle.close,
-          suggested_entry: bowAnalysis.suggestedEntry,
-          suggested_sl: bowAnalysis.suggestedSL,
-          suggested_tp: bowAnalysis.suggestedTP,
-          last_updated: new Date().toISOString()
-        }, { onConflict: 'symbol' })
+        .upsert(
+          {
+            symbol: symbol,
+            ticker: cleanTicker,
+            name: companyName,
+            is_active: true,
+            is_liquid: true,
+            last_bow_score: bowAnalysis.totalScore,
+            last_close: lastCandle.close,
+            suggested_entry: bowAnalysis.suggestedEntry,
+            suggested_sl: bowAnalysis.suggestedSL,
+            suggested_tp: bowAnalysis.suggestedTP,
+            last_updated: new Date().toISOString(),
+          },
+          { onConflict: 'symbol' }
+        )
         .select()
         .single();
 
-      // Simpan ke User Watchlist
-      if (userId && stockData) {
-        await supabase.from('user_universe').upsert({
-          user_id: userId,
+      if (stockError) {
+        console.error('Error upsert master stock:', stockError.message);
+      }
+
+      if (stockData?.id) {
+        // B. BATCH UPSERT DATA CANDLE 3 TAHUN KE 'stock_candles' (Batch per 200 baris agar aman dari limit payload)
+        const candleRows = candles.map((c) => ({
           stock_id: stockData.id,
-        }, { onConflict: 'user_id, stock_id' });
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+        }));
+
+        const BATCH_SIZE = 250;
+        for (let i = 0; i < candleRows.length; i += BATCH_SIZE) {
+          const chunk = candleRows.slice(i, i + BATCH_SIZE);
+          const { error: candleError } = await supabase
+            .from('stock_candles')
+            .upsert(chunk, { onConflict: 'stock_id, time' });
+
+          if (candleError) {
+            console.error(`Gagal batch simpan candle batch ${i}:`, candleError.message);
+          }
+        }
+
+        // C. Simpan ke Tabel 'user_universe' jika ada userId (Watchlist Pengguna)
+        if (userId) {
+          await supabase.from('user_universe').upsert(
+            {
+              user_id: userId,
+              stock_id: stockData.id,
+              added_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id, stock_id' }
+          );
+        }
       }
     }
 
+    // 6. KEMBALIKAN DATA LENGKAP 3 TAHUN UNTUK RENDERING LANGSUNG PADA MULTI-CHART
     return NextResponse.json({
       success: true,
-      message: `Emiten ${cleanTicker} berhasil ditambahkan dan dianalisis seketika!`,
+      message: `Emiten ${cleanTicker} (${candles.length} candle 3 tahun) berhasil disinkronkan!`,
       data: {
         ticker: cleanTicker,
+        name: companyName,
+        symbol: symbol,
         lastClose: lastCandle.close,
         bowScore: bowAnalysis.totalScore,
         suggestedEntry: bowAnalysis.suggestedEntry,
         suggestedSL: bowAnalysis.suggestedSL,
         suggestedTP: bowAnalysis.suggestedTP,
-        candles: candles.slice(-60),
-      }
+        candles: candles, // Mengirimkan seluruh histori 3 tahun lengkap
+      },
     });
-
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    console.error('Error in /api/universe/add:', error);
+    return NextResponse.json(
+      { success: false, message: error?.message || 'Internal server error saat mengambil data emiten' },
+      { status: 500 }
+    );
   }
 }
