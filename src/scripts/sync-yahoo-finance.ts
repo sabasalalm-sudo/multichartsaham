@@ -10,14 +10,13 @@ const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Error: SUPABASE_URL atau SUPABASE_SERVICE_ROLE_KEY belum diisi!');
+  console.error('❌ Error: SUPABASE_URL atau SUPABASE_SERVICE_ROLE_KEY belum dikonfigurasi!');
   process.exit(1);
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Daftar Saham Default (Auto-Seed jika DB kosong)
 const DEFAULT_INITIAL_STOCKS = [
   { symbol: 'BBCA.JK', ticker: 'BBCA', name: 'Bank Central Asia Tbk', sector: 'Financials', is_syariah: false, index_tags: ['LQ45', 'IDX30'] },
   { symbol: 'BBRI.JK', ticker: 'BBRI', name: 'Bank Rakyat Indonesia Tbk', sector: 'Financials', is_syariah: false, index_tags: ['LQ45', 'IDX30'] },
@@ -32,16 +31,16 @@ const DEFAULT_INITIAL_STOCKS = [
 ];
 
 async function runDailySync() {
-  console.log('🚀 [START] Memulai Sinkronisasi EOD & Keep-Alive Supabase...');
+  console.log('🚀 [START] Memulai Sinkronisasi EOD 3 Tahun & Keep-Alive Supabase...');
   const startTime = Date.now();
 
   try {
     // 1. SUPABASE KEEP-ALIVE PING
     const { error: pingError } = await supabase.from('stocks').select('id').limit(1);
     if (pingError) throw pingError;
-    console.log('🟢 Supabase Keep-Alive: Database terhubung aktif.');
+    console.log('🟢 Supabase Keep-Alive: Database terhubung.');
 
-    // 2. CEK APAKAH TABEL STOCKS KOSONG? JIKA KOSONG, LAKUKAN AUTO-SEED
+    // 2. CEK AUTO-SEED JIKA TABEL STOCKS KOSONG
     let { data: activeStocks, error: stockError } = await supabase
       .from('stocks')
       .select('*')
@@ -50,13 +49,12 @@ async function runDailySync() {
     if (stockError) throw stockError;
 
     if (!activeStocks || activeStocks.length === 0) {
-      console.log('🌱 Database stocks masih kosong. Memulai Auto-Seed 10 saham utama BEI...');
-      
-      const seedData = DEFAULT_INITIAL_STOCKS.map(s => ({
+      console.log('🌱 Melakukan Auto-Seed 10 emiten utama BEI...');
+      const seedData = DEFAULT_INITIAL_STOCKS.map((s) => ({
         ...s,
         is_liquid: true,
         is_active: true,
-        last_bow_score: 0
+        last_bow_score: 0,
       }));
 
       const { data: seeded, error: seedError } = await supabase
@@ -66,22 +64,20 @@ async function runDailySync() {
 
       if (seedError) throw seedError;
       activeStocks = seeded;
-      console.log(`✅ Berhasil melakukan Auto-Seed ${activeStocks.length} saham ke Supabase!`);
+      console.log(`✅ Berhasil seed ${activeStocks.length} saham.`);
     }
 
-    console.log(`📋 Memproses penarikan data untuk ${activeStocks.length} saham aktif...`);
-
-    // 3. TARIK DATA 1 TAHUN DARI YAHOO FINANCE UNTUK SETIAP SAHAM
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    // 3. TARIK DATA 3 TAHUN DARI YAHOO FINANCE
+    const threeYearsAgo = new Date();
+    threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
 
     for (const stock of activeStocks) {
-      console.log(`\n⏳ Mengambil candle 1 tahun ${stock.symbol} (${stock.name})...`);
+      console.log(`\n⏳ Mengambil candle 3 tahun untuk ${stock.symbol} (${stock.name})...`);
 
       try {
         const result: any[] = await yahooFinance.historical(stock.symbol, {
-          period1: oneYearAgo,
-          interval: '1d'
+          period1: threeYearsAgo,
+          interval: '1d',
         });
 
         if (!result || result.length === 0) {
@@ -89,35 +85,56 @@ async function runDailySync() {
           continue;
         }
 
-        const candles: Candle[] = result
-          .filter(c => c.close !== null && c.close !== undefined)
-          .map(c => ({
-            time: new Date(c.date).toISOString().split('T')[0],
-            open: Math.round(c.open ?? c.close),
-            high: Math.round(c.high ?? c.close),
-            low: Math.round(c.low ?? c.close),
-            close: Math.round(c.close),
-            volume: c.volume ?? 0
-          }));
+        // Sanitasi dan urutkan secara kronologis (Ascending)
+        const dateMap = new Map<string, Candle>();
+        for (const item of result) {
+          if (item.close === null || item.open === null || item.high === null || item.low === null) {
+            continue;
+          }
+          const d = new Date(item.date);
+          if (isNaN(d.getTime())) continue;
 
-        // Hitung Skor BoW & Support/Resisten
+          const dateStr = d.toISOString().split('T')[0];
+          dateMap.set(dateStr, {
+            time: dateStr,
+            open: Math.round(item.open),
+            high: Math.round(item.high),
+            low: Math.round(item.low),
+            close: Math.round(item.close),
+            volume: Number(item.volume || 0),
+          });
+        }
+
+        const candles: Candle[] = Array.from(dateMap.values()).sort((a, b) =>
+          (a.time as string).localeCompare(b.time as string)
+        );
+
+        if (candles.length === 0) continue;
+
+        // Hitung BoW dan Level SL/TP
         const bowAnalysis = calculateBowScore(candles);
         const lastCandle = candles[candles.length - 1];
 
-        // 4. SIMPAN 60 CANDLE TERAKHIR KE TABEL stock_candles
-        const recentCandles = candles.slice(-60).map(c => ({
+        // 4. SIMPAN BATCH SELURUH CANDLE 3 TAHUN KE stock_candles
+        const candleRows = candles.map((c) => ({
           stock_id: stock.id,
           time: c.time,
           open: c.open,
           high: c.high,
           low: c.low,
           close: c.close,
-          volume: c.volume
+          volume: c.volume,
         }));
 
-        await supabase.from('stock_candles').upsert(recentCandles, { onConflict: 'stock_id, time' });
+        const BATCH_SIZE = 250;
+        for (let i = 0; i < candleRows.length; i += BATCH_SIZE) {
+          const chunk = candleRows.slice(i, i + BATCH_SIZE);
+          await supabase
+            .from('stock_candles')
+            .upsert(chunk, { onConflict: 'stock_id, time' });
+        }
 
-        // 5. UPDATE SKOR BoW & REKOMENDASI DI TABEL stocks
+        // 5. UPDATE MASTER STOCKS DENGAN HARGA & SKOR TERBARU
         await supabase
           .from('stocks')
           .update({
@@ -126,22 +143,24 @@ async function runDailySync() {
             suggested_entry: bowAnalysis.suggestedEntry,
             suggested_sl: bowAnalysis.suggestedSL,
             suggested_tp: bowAnalysis.suggestedTP,
-            last_updated: new Date().toISOString()
+            last_updated: new Date().toISOString(),
           })
           .eq('id', stock.id);
 
-        console.log(`✅ ${stock.symbol} Selesai! Skor BoW: ${bowAnalysis.totalScore} | Close: ${lastCandle.close} | SL: ${bowAnalysis.suggestedSL} | TP: ${bowAnalysis.suggestedTP}`);
+        console.log(
+          `✅ ${stock.symbol} Berhasil! (${candles.length} candle 3 tahun) | Close: ${lastCandle.close} | BoW: ${bowAnalysis.totalScore}`
+        );
 
-        await delay(800);
+        await delay(600); // Mencegah throttling Yahoo Finance
       } catch (err: any) {
         console.error(`❌ Gagal pada ${stock.symbol}:`, err.message);
       }
     }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`\n🎉 [COMPLETE] Sinkronisasi seluruh candle bursa selesai dalam ${duration} detik.`);
+    console.log(`\n🎉 [COMPLETE] Sinkronisasi data 3 tahun selesai dalam ${duration} detik.`);
   } catch (err: any) {
-    console.error('🔥 Fatal Error pada worker:', err.message);
+    console.error('🔥 Fatal Error sync worker:', err.message);
     process.exit(1);
   }
 }
